@@ -1,37 +1,32 @@
-name: CI/CD for Azure SQL Database
+name: Deploy SQL DB
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
+
+permissions:
+  id-token: write    # Required for OIDC federated auth
+  contents: read
 
 jobs:
-  deploy-sql:
+  deploy:
     runs-on: ubuntu-latest
-    environment: uat
-    permissions:
-      id-token: write   # Required for OIDC federated credentials
-      contents: read
+    environment: dev  # or uat/prod depending on workflow environment
 
     steps:
-      # Checkout repo
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Login to Azure with Federated Identity
-      - name: Azure Login (OIDC)
+      - name: Azure Login via OIDC Federated Credentials
         uses: azure/login@v2
         with:
-          auth-type: federated
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          auth-type: SERVICE_PRINCIPAL
+          enable-AzPSSession: false
 
-      # Deploy SQL scripts (if you have .sql files inside /sql folder)
-      - name: Run SQL deployment
-        uses: azure/sql-action@v2
-        with:
-          connection-string: "Server=tcp:atco-sqluat-3294.database.windows.net,1433;Initial Catalog=AZURE_SQL_DATABASE;Authentication=ActiveDirectoryDefault;"
-          path: "./sql" # folder with your .sql files
-          action: 'publish'
+      - name: Deploy SQL Schema (example)
+        run: |
+          az sql server list --output table
