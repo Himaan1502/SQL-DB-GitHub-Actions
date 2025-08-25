@@ -1,56 +1,33 @@
-name: SQL DB CI/CD
+name: Deploy SQL Database
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # Required for federated identity login
+  contents: read
 
 jobs:
-  build:
+  deploy-sql:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, uat, prod]
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to Azure
+      - name: Azure Login via Federated Credentials
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Dev
+      - name: Deploy SQL Script to ${{ matrix.environment }}
         run: |
-          sqlcmd -S ${{ secrets.AZURE_SQL_SERVER }} -d ${{ secrets.AZURE_SQL_DATABASE }} -G -i ./sql/deploy.sql
-
-  deploy-uat:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: UAT
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to UAT
-        run: |
-          sqlcmd -S ${{ secrets.AZURE_SQL_SERVER_UAT }} -d ${{ secrets.AZURE_SQL_DATABASE_UAT }} -G -i ./sql/deploy.sql
-
-  deploy-prod:
-    needs: deploy-uat
-    runs-on: ubuntu-latest
-    environment: Prod
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to Prod
-        run: |
-          sqlcmd -S ${{ secrets.AZURE_SQL_SERVER_PROD }} -d ${{ secrets.AZURE_SQL_DATABASE_PROD }} -G -i ./sql/deploy.sql
+          echo "Deploying to ${{ matrix.environment }} environment..."
+          sqlcmd -S ${{ secrets.AZURE_SQL_SERVER }} -d ${{ secrets.AZURE_SQL_DATABASE }} \
+                 -U ${{ secrets.AZURE_SQL_USERNAME }} -P ${{ secrets.AZURE_SQL_PASSWORD }} \
+                 -i ./scripts/deploy.sql
