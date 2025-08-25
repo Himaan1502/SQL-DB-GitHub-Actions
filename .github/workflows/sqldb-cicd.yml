@@ -1,33 +1,50 @@
-name: Deploy SQL Database
+name: CI/CD for Azure SQL DB
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-
-permissions:
-  id-token: write   # Required for federated identity login
-  contents: read
 
 jobs:
   deploy-sql:
+    name: Deploy SQL Scripts to ${{ github.event.deployment_environment }}
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        environment: [dev, uat, prod]
+
+    # attach to GitHub environment (with approvals if enabled)
+    environment: ${{ github.event.deployment_environment }}
+
+    permissions:
+      id-token: write   # for OIDC federated identity
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Azure Login via Federated Credentials
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy SQL Script to ${{ matrix.environment }}
+      - name: Install SQLCMD
         run: |
-          echo "Deploying to ${{ matrix.environment }} environment..."
-          sqlcmd -S ${{ secrets.AZURE_SQL_SERVER }} -d ${{ secrets.AZURE_SQL_DATABASE }} \
-                 -U ${{ secrets.AZURE_SQL_USERNAME }} -P ${{ secrets.AZURE_SQL_PASSWORD }} \
-                 -i ./scripts/deploy.sql
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
+          echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+          source ~/.bashrc
+
+      - name: Set Environment Variables
+        run: |
+          echo "AZURE_SQL_SERVER=${{ secrets.AZURE_SQL_SERVER }}" >> $GITHUB_ENV
+          echo "AZURE_SQL_DATABASE=${{ secrets.AZURE_SQL_DATABASE }}" >> $GITHUB_ENV
+          echo "AZURE_SQL_USERNAME=${{ secrets.AZURE_SQL_USERNAME }}" >> $GITHUB_ENV
+          echo "AZURE_SQL_PASSWORD=${{ secrets.AZURE_SQL_PASSWORD }}" >> $GITHUB_ENV
+
+      - name: Run SQL Deployment
+        run: |
+          sqlcmd -S $AZURE_SQL_SERVER -d $AZURE_SQL_DATABASE \
+                 -U $AZURE_SQL_USERNAME -P $AZURE_SQL_PASSWORD \
+                 -i ./sql/deploy.sql
